@@ -1,0 +1,39 @@
+symbol: BTC/USDT:USDT
+exchange: binanceusdm
+initial_equity: 10000
+bar_hours: 4
+risk_free_rate: 0.03
+n_trials: 120
+seed: 42
+
+paths:
+  ohlcv_csv: data/BTCUSDT_4h.csv
+  funding_csv: data/BTCUSDT_funding.csv
+  reports_dir: reports
+
+costs:
+  taker_bps: 4.0
+  slippage_bps: 2.0
+  funding_multiplier: 1.0
+  fee_multiplier: 1.0
+  slippage_multiplier: 1.0
+
+windows:
+  training_start: "2019-09-08"
+  training_end: "2021-01-01"
+  validation_start: "2021-01-01"
+  validation_end: "2023-01-01"
+  long_start: "2019-09-08"
+  long_end: "2025-10-14"
+  blind_start: "2024-01-01"
+  blind_end: "2025-11-24"
+
+screening:
+  top_k_stage1: 40
+  stable_k: 5
+  min_mean_monthly_true: 0.005
+  min_monthly_true: 0.0
+  max_dd_mean: 0.30
+  max_switch_density_mean: 0.12
+  scenario_taker_bps: [3.0, 4.0, 6.0]
+  scenario_funding_mult: [0.5, 1.0, 1.5]

@@ -1,0 +1,25 @@
+[project]
+name = "autoquant-strict4h"
+version = "0.1.0"
+description = "STRICT4H backtesting and screening laboratory for cryptocurrency perpetual futures."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "pandas>=2.2",
+  "numpy>=1.26",
+  "PyYAML>=6.0",
+  "optuna>=3.6",
+  "ccxt>=4.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.8",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

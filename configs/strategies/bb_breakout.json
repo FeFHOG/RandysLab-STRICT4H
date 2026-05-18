@@ -1,0 +1,8 @@
+{
+  "strategy": "bb_breakout",
+  "bb_period": 20,
+  "bb_dev": 2.0,
+  "min_hold_bars": 1,
+  "cooldown_hours": 0,
+  "max_exposure_abs": 1.0
+}

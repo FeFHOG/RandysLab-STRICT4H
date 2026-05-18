@@ -1,0 +1,8 @@
+{
+  "strategy": "ma_cross",
+  "ma_fast": 20,
+  "ma_slow": 60,
+  "min_hold_bars": 1,
+  "cooldown_hours": 0,
+  "max_exposure_abs": 1.0
+}
