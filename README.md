@@ -85,6 +85,24 @@ reports/dashboard.html
 - `robust_summary.csv`: Stage II scenario aggregation.
 - `dashboard.html`: local visual audit dashboard.
 
+## Export QuantumRandy Baseline Artifacts
+
+Export traditional baseline strategy results as control-group artifacts for QuantumRandy runtime/paper observation:
+
+```powershell
+python scripts\export_baselines.py --window all --out reports\quantumrandy_baselines
+```
+
+Outputs:
+
+- `baseline_summary.json`: machine-readable baseline artifact.
+- `baseline_summary.csv`: compact strategy comparison table.
+- `baseline_report.md`: human-readable audit report.
+- `*_ledger.csv`: optional per-strategy bar-level ledgers.
+
+These files are comparison artifacts only. They are not QuantumRandy runtime publish payloads and must not be
+auto-promoted into runtime strategies.
+
 ## Built-In Baseline Strategies
 
 Two simple baseline strategies are included:
@@ -105,7 +123,6 @@ Outputs:
 
 ## Next Improvements
 
-- Add a baseline export format that QuantumRandy can ingest as a paper-runtime comparison.
 - Add cross-asset baseline configs for ETH, SOL, BNB, and AVAX.
 - Add portfolio-level baseline reports for fixed baseline blends.
 - Add stronger dashboard summaries for server-side paper observation.

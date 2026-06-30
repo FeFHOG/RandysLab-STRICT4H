@@ -26,6 +26,16 @@ QuantumRandy should treat RandysLab outputs as baseline/control artifacts:
 - use RandysLab strict execution assumptions as a sanity reference;
 - eventually export baseline paper strategies into the QuantumRandy runtime observation layer.
 
+Baseline exports are produced with:
+
+```powershell
+python scripts\export_baselines.py --window all --out reports\quantumrandy_baselines
+```
+
+The export writes `baseline_summary.json`, `baseline_summary.csv`, `baseline_report.md`, and optional per-strategy
+ledgers. These artifacts are a control group for runtime/paper reports. They are not QuantumRandy runtime publish
+payloads and must not bypass the manual factor publishing or review flow.
+
 ## Naming Migration
 
 The project was formerly named AutoQuant STRICT4H. The canonical package name is now `randyslab`.
