@@ -59,6 +59,12 @@ With a local proxy:
 python scripts\fetch_binance.py --symbol BTC/USDT:USDT --file-prefix BTCUSDT --start 2019-09-08 --end 2025-11-24 --proxy http://127.0.0.1:7890
 ```
 
+If the live Binance Futures API is unavailable from your network, use Binance public data archive files:
+
+```powershell
+python scripts\fetch_binance.py --method archive --symbol BTC/USDT:USDT --file-prefix BTCUSDT --start 2019-09-08 --end 2025-11-24
+```
+
 ## Run The Baseline Workflow
 
 ```powershell
