@@ -1,3 +1,8 @@
-"""AutoQuant STRICT4H replication framework."""
+"""Compatibility layer for the former autoquant package name.
 
-__version__ = "0.1.0"
+New code should import from ``randyslab``.
+"""
+
+from randyslab import __version__
+
+__all__ = ["__version__"]

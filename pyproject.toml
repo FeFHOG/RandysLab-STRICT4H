@@ -1,7 +1,7 @@
 [project]
-name = "autoquant-strict4h"
+name = "randyslab-strict4h"
 version = "0.1.0"
-description = "STRICT4H backtesting and screening laboratory for cryptocurrency perpetual futures."
+description = "RandysLab STRICT4H baseline research toolkit for cryptocurrency perpetual futures."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -14,6 +14,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "pytest>=8.0",
   "ruff>=0.8",
 ]
 

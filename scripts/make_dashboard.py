@@ -9,10 +9,10 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from autoquant.config import load_settings
-from autoquant.data import align_funding_to_ohlcv, read_funding, read_ohlcv, slice_window
-from autoquant.engine import run_strict4h
-from autoquant.metrics import equity_curve, summarize
+from randyslab.config import load_settings
+from randyslab.data import align_funding_to_ohlcv, read_funding, read_ohlcv, slice_window
+from randyslab.engine import run_strict4h
+from randyslab.metrics import equity_curve, summarize
 
 
 def load_theta(path: Path, candidate_index: int) -> dict:
@@ -61,7 +61,7 @@ def dashboard_html(payload: dict) -> str:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AutoQuant STRICT4H Dashboard</title>
+  <title>RandysLab STRICT4H Dashboard</title>
   <style>
     :root {
       color-scheme: dark;
@@ -152,60 +152,61 @@ def dashboard_html(payload: dict) -> str:
 </head>
 <body>
   <header>
-    <h1>AutoQuant STRICT4H 策略实验室</h1>
+    <h1>RandysLab STRICT4H Research Dashboard</h1>
     <div class="sub" id="subtitle"></div>
   </header>
   <main>
     <div class="grid metrics" id="metrics"></div>
     <div class="toolbar">
       <div class="field">
-        <label>时间窗口</label>
+        <label>Time Window</label>
         <input id="range" type="range" min="120" max="1200" value="420" step="20" />
       </div>
       <div class="field">
-        <label>显示K线根数</label>
+        <label>Visible Bars</label>
         <input id="bars" type="number" min="120" max="2000" value="420" step="20" />
       </div>
       <div class="field">
-        <label>窗口位置</label>
+        <label>Window Position</label>
         <select id="position">
-          <option value="end">最新</option>
-          <option value="train">训练期末</option>
-          <option value="validation">验证期末</option>
-          <option value="full">全样本抽样</option>
+          <option value="end">Latest</option>
+          <option value="train">Training End</option>
+          <option value="validation">Validation End</option>
+          <option value="full">Full Sample</option>
         </select>
       </div>
     </div>
     <section>
-      <div class="section-head"><b>K线、持仓与交易点</b><span>币圈配色：绿涨红跌；绿色上箭头=增加多头，红色下箭头=增加空头</span></div>
+      <div class="section-head"><b>K-Line, Exposure, and Trade Markers</b><span>Green candles rise, red candles fall; green arrows add long exposure, red arrows add short exposure.</span></div>
       <canvas id="priceCanvas"></canvas>
     </section>
     <div class="grid two">
       <section>
-        <div class="section-head"><b>权益曲线</b><span>从 1.0 开始复利</span></div>
+        <div class="section-head"><b>Equity Curve</b><span>Compounded from 1.0</span></div>
         <canvas id="equityCanvas"></canvas>
       </section>
       <section>
-        <div class="section-head"><b>当前参数 theta</b><span>Stage I 候选，仅供研究</span></div>
+        <div class="section-head"><b>Current Theta</b><span>Stage I candidate, research-only</span></div>
         <code id="theta"></code>
       </section>
     </div>
     <section>
-      <div class="section-head"><b>回撤曲线</b><span>黄色阴影和竖线标出当前回测展示段的开始与结束</span></div>
+      <div class="section-head"><b>Drawdown Curve</b><span>Yellow shading marks the currently displayed backtest window.</span></div>
       <canvas id="ddCanvas"></canvas>
     </section>
     <div class="grid two">
       <section>
-        <div class="section-head"><b>Stage I 前几名</b><span>训练窗口里看起来最好的参数</span></div>
+        <div class="section-head"><b>Stage I Leaders</b><span>Best-looking parameter sets in the training window</span></div>
         <div id="trials"></div>
       </section>
       <section>
-        <div class="section-head"><b>Stage II 稳健性筛选</b><span>越能扛成本和验证期越好</span></div>
+        <div class="section-head"><b>Stage II Robustness</b><span>Cost and validation stress-test screening</span></div>
         <div id="robust"></div>
       </section>
     </div>
     <section class="note">
-      这不是实盘交易面板。论文的思路是“实验室/质检台”：先用严格执行、成本、资金费率、验证窗口和压力测试筛策略，筛不过就继续调教。
+      This is not a live-trading dashboard. RandysLab is a research and audit workbench for strict execution, costs,
+      funding, validation windows, and stress-tested baseline strategies.
     </section>
   </main>
   <script>
@@ -295,7 +296,7 @@ def dashboard_html(payload: dict) -> str:
         if (i === 0) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
       });
       ctx.stroke();
-      label(ctx, data[0].timestamp + "  →  " + data[data.length - 1].timestamp, 10, 18);
+      label(ctx, data[0].timestamp + "  ->  " + data[data.length - 1].timestamp, 10, 18);
       label(ctx, "price " + lo.toFixed(1) + " - " + hi.toFixed(1), 10, h - 10);
     }
     function drawTriangle(ctx, x, y, color, dir) {
@@ -344,20 +345,20 @@ def dashboard_html(payload: dict) -> str:
       label(ctx, `${name} ${min.toFixed(3)} - ${max.toFixed(3)}`, 10, 18);
     }
     function table(data, cols) {
-      if (!data.length) return "<div class='note'>暂无数据</div>";
+      if (!data.length) return "<div class='note'>No data.</div>";
       return `<table><thead><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead><tbody>` +
         data.map(r => `<tr>${cols.map(c => `<td>${String(r[c] ?? "").slice(0, 80)}</td>`).join("")}</tr>`).join("") +
         "</tbody></table>";
     }
     function render() {
-      document.getElementById("subtitle").textContent = `${payload.symbol} · ${payload.start} 至 ${payload.end} · ${payload.note}`;
+      document.getElementById("subtitle").textContent = `${payload.symbol} | ${payload.start} to ${payload.end} | ${payload.note}`;
       document.getElementById("metrics").innerHTML = [
         metric("CAGR", fmtPct(payload.summary.cagr)),
-        metric("月几何收益", fmtPct(payload.summary.monthly_geom)),
+        metric("Monthly Geom Return", fmtPct(payload.summary.monthly_geom)),
         metric("Sharpe", fmtNum(payload.summary.sharpe)),
-        metric("最大回撤", fmtPct(payload.summary.max_dd)),
-        metric("交易次数", payload.summary.trades),
-        metric("换手密度", fmtPct(payload.summary.switch_density)),
+        metric("Max Drawdown", fmtPct(payload.summary.max_dd)),
+        metric("Trades", payload.summary.trades),
+        metric("Switch Density", fmtPct(payload.summary.switch_density)),
       ].join("");
       document.getElementById("theta").textContent = JSON.stringify(payload.theta, null, 2);
       document.getElementById("trials").innerHTML = table(payload.trials, ["trial", "score", "monthly_geom", "sharpe", "max_dd", "trades"]);
@@ -404,7 +405,7 @@ def main() -> None:
         "symbol": settings.symbol,
         "start": ledger.index.min().strftime("%Y-%m-%d"),
         "end": ledger.index.max().strftime("%Y-%m-%d"),
-        "note": "Stage I 候选参数全样本观察，不代表可实盘",
+        "note": "Research-only STRICT4H baseline dashboard; not a live-trading signal.",
         "windows": settings.windows.__dict__,
         "theta": theta,
         "summary": summarize(ledger, settings.risk_free_rate),
@@ -420,3 +421,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

@@ -7,10 +7,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from autoquant.config import CostProfile, load_settings
-from autoquant.data import align_funding_to_ohlcv, read_funding, read_ohlcv, slice_window
-from autoquant.engine import run_strict4h
-from autoquant.metrics import summarize
+from randyslab.config import CostProfile, load_settings
+from randyslab.data import align_funding_to_ohlcv, read_funding, read_ohlcv, slice_window
+from randyslab.engine import run_strict4h
+from randyslab.metrics import summarize
 
 
 def main() -> None:
@@ -47,3 +47,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

@@ -7,9 +7,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from autoquant.config import load_settings
-from autoquant.data import align_funding_to_ohlcv, read_funding, read_ohlcv, slice_window
-from autoquant.optimize import search
+from randyslab.config import load_settings
+from randyslab.data import align_funding_to_ohlcv, read_funding, read_ohlcv, slice_window
+from randyslab.optimize import search
 
 
 def main() -> None:
@@ -37,3 +37,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
