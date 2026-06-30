@@ -2,16 +2,13 @@ from __future__ import annotations
 
 import pandas as pd
 
-import autoquant
 import randyslab
-from autoquant.engine import run_strict4h as compat_run_strict4h
 from randyslab.config import CostProfile
 from randyslab.engine import run_strict4h
 
 
-def test_randyslab_and_autoquant_compat_imports() -> None:
-    assert randyslab.__version__ == autoquant.__version__
-    assert run_strict4h is compat_run_strict4h
+def test_randyslab_imports() -> None:
+    assert randyslab.__version__ == "0.1.0"
 
 
 def test_first_bar_turnover_starts_at_zero() -> None:

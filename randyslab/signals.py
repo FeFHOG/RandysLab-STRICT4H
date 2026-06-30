@@ -74,11 +74,6 @@ def randyslab_signal(ohlcv: pd.DataFrame, funding_rate: pd.Series, p: dict) -> p
     return raw
 
 
-def autoquant_signal(ohlcv: pd.DataFrame, funding_rate: pd.Series, p: dict) -> pd.Series:
-    """Backward-compatible alias for the former project name."""
-    return randyslab_signal(ohlcv, funding_rate, p)
-
-
 def ma_cross_signal(ohlcv: pd.DataFrame, p: dict) -> pd.Series:
     fast = int(p.get("ma_fast", p.get("ema_fast", 20)))
     slow = int(p.get("ma_slow", p.get("ema_slow", 60)))

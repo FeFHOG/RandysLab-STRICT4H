@@ -36,15 +36,6 @@ The export writes `baseline_summary.json`, `baseline_summary.csv`, `baseline_rep
 ledgers. These artifacts are a control group for runtime/paper reports. They are not QuantumRandy runtime publish
 payloads and must not bypass the manual factor publishing or review flow.
 
-## Naming Migration
+## Package Name
 
-The project was formerly named AutoQuant STRICT4H. The canonical package name is now `randyslab`.
-
-Temporary compatibility imports remain under `autoquant` so older scripts can migrate gradually:
-
-```python
-from autoquant.engine import run_strict4h  # still works
-from randyslab.engine import run_strict4h  # preferred
-```
-
-New code should use `randyslab`.
+The canonical package name is `randyslab`.

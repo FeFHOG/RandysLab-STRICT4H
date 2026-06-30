@@ -4,9 +4,6 @@ RandysLab is the baseline research and data utility layer for the Randy quant st
 cryptocurrency perpetual-futures backtesting, traditional strategy baselines, parameter search, robustness screening,
 and audit-friendly dashboards.
 
-This project was formerly named **AutoQuant STRICT4H**. The Python package is now `randyslab`; a thin `autoquant`
-compatibility layer remains for older imports.
-
 RandysLab is not a live trading system. It does not place orders and does not require exchange trading credentials for
 historical research.
 
@@ -126,4 +123,3 @@ Outputs:
 - Add cross-asset baseline configs for ETH, SOL, BNB, and AVAX.
 - Add portfolio-level baseline reports for fixed baseline blends.
 - Add stronger dashboard summaries for server-side paper observation.
-- Keep old `autoquant` imports working until downstream scripts have migrated.
