@@ -107,7 +107,8 @@ def build_factor_candidate_review(detail: pd.DataFrame, rules: ReviewRules | Non
         key_values = group_key if isinstance(group_key, tuple) else (group_key,)
         key_map = dict(zip(group_columns, key_values, strict=False))
         completed = group[group["status"] == "completed"].copy()
-        failures = _failure_reasons(completed, group, rules)
+        effective_min_completed_rows = _effective_min_completed_rows(completed, group, rules)
+        failures = _failure_reasons(completed, group, rules, effective_min_completed_rows)
         positive = completed[completed["sharpe"] > 0].copy()
         positive_assets = sorted(str(value) for value in positive["asset"].unique())
         window_means = _mean_by(completed, "window", "sharpe")
@@ -139,6 +140,7 @@ def build_factor_candidate_review(detail: pd.DataFrame, rules: ReviewRules | Non
                 "review_verdict": "research_watchlist" if not failures else "blocked_by_conservative_rules",
                 "failure_reasons": "|".join(failures),
                 "completed_rows": int(len(completed)),
+                "effective_min_completed_rows": int(effective_min_completed_rows),
                 "total_rows": int(len(group)),
                 "positive_rows": int(len(positive)),
                 "positive_row_share": _ratio(len(positive), len(completed)),
@@ -246,7 +248,12 @@ def render_factor_candidate_review_report(payload: dict[str, Any], review: pd.Da
     return "\n".join(lines)
 
 
-def _failure_reasons(completed: pd.DataFrame, group: pd.DataFrame, rules: ReviewRules) -> list[str]:
+def _failure_reasons(
+    completed: pd.DataFrame,
+    group: pd.DataFrame,
+    rules: ReviewRules,
+    effective_min_completed_rows: int,
+) -> list[str]:
     if completed.empty:
         return ["no_completed_rows"]
     if rules.scope_mode not in {"multi_asset", "declared"}:
@@ -256,7 +263,7 @@ def _failure_reasons(completed: pd.DataFrame, group: pd.DataFrame, rules: Review
     window_means = _mean_by(completed, "window", "sharpe")
     asset_positive_counts = positive["asset"].value_counts().to_dict()
     scope_asset_count = int(completed["asset"].nunique())
-    if len(completed) < rules.min_completed_rows:
+    if len(completed) < effective_min_completed_rows:
         failures.append("too_few_completed_rows")
     if len(completed) < len(group):
         failures.append("has_failed_rows")
@@ -285,6 +292,12 @@ def _failure_reasons(completed: pd.DataFrame, group: pd.DataFrame, rules: Review
     if _max(completed, "max_dd") > rules.max_worst_max_dd:
         failures.append("extreme_row_drawdown")
     return failures
+
+
+def _effective_min_completed_rows(completed: pd.DataFrame, group: pd.DataFrame, rules: ReviewRules) -> int:
+    if rules.scope_mode == "declared":
+        return max(1, min(int(rules.min_completed_rows), int(len(group))))
+    return int(rules.min_completed_rows)
 
 
 def _mean(frame: pd.DataFrame, column: str) -> float:

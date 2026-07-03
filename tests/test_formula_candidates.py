@@ -601,3 +601,36 @@ def test_review_factor_candidate_sensitivity_allows_declared_single_asset_scope(
     assert "BTCUSDT_4h" in report
     assert "BTCUSDT 4h scoped participation research." in report
     assert "diagnostic_only" in report
+
+
+def test_review_factor_candidate_sensitivity_declared_scope_caps_completed_row_floor_to_group_size() -> None:
+    detail = pd.DataFrame(
+        [
+            {
+                "candidate_id": "btc_scoped",
+                "formula": "zscore(ema(volume,48),120)",
+                "variant_id": "thr_0p5_long_flat_cap_1p0_none",
+                "exposure_cap": 1.0,
+                "volatility_cap_label": "none",
+                "intended_scope": "BTCUSDT_4h",
+                "applicability_hypothesis": "BTCUSDT 4h scoped participation research.",
+                "out_of_scope_policy": "diagnostic_only",
+                "asset": "BTCUSDT",
+                "window": window,
+                "threshold": 0.5,
+                "status": "completed",
+                "sharpe": 0.7,
+                "cagr": 0.2,
+                "max_dd": 0.2,
+            }
+            for window in ["all", "training", "validation", "long", "blind"]
+        ]
+    )
+
+    review = build_factor_candidate_review(detail, ReviewRules(scope_mode="declared"))
+
+    row = review.iloc[0].to_dict()
+    assert row["completed_rows"] == 5
+    assert row["effective_min_completed_rows"] == 5
+    assert row["review_verdict"] == "research_watchlist"
+    assert "too_few_completed_rows" not in row["failure_reasons"]
