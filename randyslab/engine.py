@@ -16,6 +16,26 @@ def run_strict4h(
 ) -> pd.DataFrame:
     p = DEFAULT_THETA | theta
     signal = make_signal(ohlcv, funding_rate, p)
+    return run_strict4h_signal(
+        ohlcv,
+        funding_rate,
+        signal,
+        p,
+        costs,
+        execution_delay_bars=execution_delay_bars,
+    )
+
+
+def run_strict4h_signal(
+    ohlcv: pd.DataFrame,
+    funding_rate: pd.Series,
+    signal: pd.Series,
+    theta: dict,
+    costs: CostProfile,
+    execution_delay_bars: int = 1,
+) -> pd.DataFrame:
+    p = DEFAULT_THETA | theta
+    signal = signal.reindex(ohlcv.index).fillna(0).astype("int8")
     exposure = signal.shift(execution_delay_bars).fillna(0.0).astype(float)
     cap = float(p.get("max_exposure_abs", 1.0) or 1.0)
     exposure = exposure.clip(lower=-abs(cap), upper=abs(cap))

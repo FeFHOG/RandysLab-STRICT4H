@@ -25,6 +25,7 @@ QuantumRandy remains responsible for LLM/MCTS factor mining, formula validation,
 - Strict `t+1` execution: signals from bar `t` are executed from bar `t+1`.
 - Funding-rate alignment with forward-fill only; no future funding observations are used.
 - Cost decomposition: taker fee, slippage, and funding cost.
+- Research-only QuantumRandy factor-candidate judging with per-candidate failure reasons.
 - Stage I parameter search with Optuna TPE when available, random fallback otherwise.
 - Stage II cost-scenario robustness screening.
 - Local HTML dashboards with equity, drawdown, K-line, and trade markers.
@@ -105,6 +106,53 @@ Outputs:
 
 These files are comparison artifacts only. They are not QuantumRandy runtime publish payloads and must not be
 auto-promoted into runtime strategies.
+
+## Judge QuantumRandy Factor Candidates
+
+Strictly judge research-only QuantumRandy factor-candidate exports:
+
+```powershell
+python scripts\judge_factor_candidates.py `
+  --config configs\strict4h.yaml `
+  --candidates ..\QuantumRandy\reports\factor_candidate_exports\selector_v082_milestone_4_60\factor_candidates.jsonl `
+  --window all `
+  --out reports\factor_candidate_judging\selector_v082_milestone_4_60_btc
+```
+
+Outputs:
+
+- `factor_candidate_judging_summary.json`: machine-readable strict judge artifact.
+- `factor_candidate_judging_summary.csv`: compact candidate comparison table.
+- `factor_candidate_judging_report.md`: human-readable audit report.
+- `*_ledger.csv`: optional per-candidate strict4h ledgers.
+
+These files are research judge artifacts only. They are not runtime publish payloads, portfolio construction steps, or
+live execution plans. See `docs/FACTOR_CANDIDATE_JUDGING.md`.
+
+Sweep candidates across assets, windows, and thresholds:
+
+```powershell
+python scripts\sweep_factor_candidates.py `
+  --config configs\strict4h.yaml `
+  --candidates ..\QuantumRandy\reports\factor_candidate_exports\selector_v082_milestone_4_60\factor_candidates.jsonl `
+  --asset BTCUSDT:data\BTCUSDT_4h.csv:data\BTCUSDT_funding.csv `
+  --asset ETHUSDT:data\ETHUSDT_4h.csv:data\ETHUSDT_funding.csv `
+  --window training --window validation --window blind `
+  --threshold 0.0 --threshold 0.5 --threshold 1.0 `
+  --signal-mode long_short --signal-mode long_flat `
+  --out reports\factor_candidate_sensitivity\selector_v082_milestone
+```
+
+Apply the conservative research review gate to a sensitivity detail CSV:
+
+```powershell
+python scripts\review_factor_candidate_sensitivity.py `
+  --detail-csv reports\factor_candidate_sensitivity\selector_v082_milestone\factor_candidate_sensitivity_detail.csv `
+  --out reports\factor_candidate_review\selector_v082_milestone
+```
+
+The review gate writes explicit blockers such as high drawdown, weak validation/blind windows, and asset concentration.
+It does not admit factors.
 
 ## Built-In Baseline Strategies
 

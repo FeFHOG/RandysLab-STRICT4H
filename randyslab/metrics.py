@@ -3,8 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-
 BARS_PER_YEAR_4H = 365.0 * 24.0 / 4.0
+SHARPE_STD_EPSILON = 1e-12
 
 
 def equity_curve(returns: pd.Series, initial: float = 1.0) -> pd.Series:
@@ -32,9 +32,10 @@ def sharpe(returns: pd.Series, risk_free_rate: float = 0.03, bars_per_year: floa
     r = returns.fillna(0.0)
     excess = r - risk_free_rate / bars_per_year
     std = float(excess.std(ddof=0))
-    if std == 0:
+    if not np.isfinite(std) or std <= SHARPE_STD_EPSILON:
         return 0.0
-    return float(excess.mean() / std * np.sqrt(bars_per_year))
+    value = float(excess.mean() / std * np.sqrt(bars_per_year))
+    return value if np.isfinite(value) else 0.0
 
 
 def monthly_geometric_mean(returns: pd.Series) -> float:
