@@ -228,6 +228,82 @@ def test_build_robustness_summaries_assigns_required_fragility_labels() -> None:
     assert variant_ranking.iloc[0]["conservative_verdict"] == "blocked_pending_new_hypotheses"
 
 
+def test_build_robustness_summaries_uses_declared_scope_for_hard_gate() -> None:
+    detail = pd.DataFrame(
+        [
+            {
+                "candidate_id": "qr_scoped",
+                "formula": "zscore(close,24)",
+                "scenario_id": "base_all_windows",
+                "stress_family": "baseline",
+                "variant_id": "v",
+                "intended_scope": "BTCUSDT_4h",
+                "asset": "BTCUSDT",
+                "window": "validation",
+                "status": "completed",
+                "sharpe": 0.75,
+                "max_dd": 0.20,
+            },
+            {
+                "candidate_id": "qr_scoped",
+                "formula": "zscore(close,24)",
+                "scenario_id": "base_all_windows",
+                "stress_family": "baseline",
+                "variant_id": "v",
+                "intended_scope": "BTCUSDT_4h",
+                "asset": "BTCUSDT",
+                "window": "blind",
+                "status": "completed",
+                "sharpe": 0.80,
+                "max_dd": 0.22,
+            },
+            {
+                "candidate_id": "qr_scoped",
+                "formula": "zscore(close,24)",
+                "scenario_id": "base_all_windows",
+                "stress_family": "baseline",
+                "variant_id": "v",
+                "intended_scope": "BTCUSDT_4h",
+                "asset": "SOLUSDT",
+                "window": "validation",
+                "status": "completed",
+                "sharpe": -1.20,
+                "max_dd": 0.65,
+            },
+            {
+                "candidate_id": "qr_scoped",
+                "formula": "zscore(close,24)",
+                "scenario_id": "exclude_btcusdt",
+                "stress_family": "asset_exclusion",
+                "variant_id": "v",
+                "intended_scope": "BTCUSDT_4h",
+                "asset_exclusions": "BTCUSDT",
+                "asset": "SOLUSDT",
+                "window": "validation",
+                "status": "completed",
+                "sharpe": -1.00,
+                "max_dd": 0.70,
+            },
+        ]
+    )
+
+    scenario_summary, variant_ranking = build_robustness_summaries(detail)
+    by_scenario = scenario_summary.set_index("scenario_id")
+    ranking = variant_ranking.iloc[0]
+
+    assert by_scenario.loc["base_all_windows", "conservative_verdict"] == "research_watchlist"
+    assert by_scenario.loc["base_all_windows", "diagnostic_verdict"] == "blocked_by_robustness_stress"
+    assert bool(by_scenario.loc["base_all_windows", "scope_hard_gate"]) is True
+    assert by_scenario.loc["exclude_btcusdt", "conservative_verdict"] == "diagnostic_only_out_of_scope"
+    assert bool(by_scenario.loc["exclude_btcusdt", "scope_hard_gate"]) is False
+    assert ranking["conservative_verdict"] == "research_watchlist"
+    assert ranking["stress_survival_count"] == 1
+    assert ranking["stress_count"] == 1
+    assert ranking["diagnostic_scenario_count"] == 1
+    assert ranking["failure_reasons"] == ""
+    assert "asset_exclusion_fragility" in ranking["robustness_labels"].split("|")
+
+
 def test_run_watchlist_robustness_gauntlet_writes_research_artifacts(tmp_path) -> None:
     _write_market_fixture(tmp_path)
     _write_config(tmp_path)

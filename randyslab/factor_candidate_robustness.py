@@ -346,6 +346,7 @@ def build_robustness_summaries(detail: pd.DataFrame) -> tuple[pd.DataFrame, pd.D
         "scenario_id": "",
         "window": "",
         "asset": "",
+        "intended_scope": "",
         "status": "failed",
         "failure_reasons": "",
     }.items():
@@ -362,17 +363,32 @@ def build_robustness_summaries(detail: pd.DataFrame) -> tuple[pd.DataFrame, pd.D
     for group_key, group in frame.groupby(group_columns, dropna=False):
         key_map = dict(zip(group_columns, group_key if isinstance(group_key, tuple) else (group_key,), strict=False))
         completed = group[group["status"] == "completed"].copy()
-        failures = _conservative_failures(completed, group)
-        labels = _robustness_labels(completed, str(key_map["stress_family"]), failures)
+        diagnostic_failures = _conservative_failures(completed, group)
+        labels = _robustness_labels(completed, str(key_map["stress_family"]), diagnostic_failures)
+        intended_scope = _first(group, "intended_scope")
+        scope_asset = _declared_scope_asset(intended_scope)
+        scope_group, scope_completed, scope_hard_gate = _scope_hard_gate(group, scope_asset)
+        scope_failures = _conservative_failures(scope_completed, scope_group) if scope_hard_gate else []
+        if scope_hard_gate:
+            conservative_verdict = "research_watchlist" if not scope_failures else "blocked_by_robustness_stress"
+        else:
+            conservative_verdict = "diagnostic_only_out_of_scope"
         scenario_rows.append(
             {
                 **key_map,
                 "mitigation_family": _first(group, "mitigation_family"),
                 "asset_exclusions": _first(group, "asset_exclusions"),
-                "conservative_verdict": "research_watchlist"
-                if not failures
+                "intended_scope": intended_scope,
+                "scope_asset": scope_asset,
+                "scope_hard_gate": bool(scope_hard_gate),
+                "scope_completed_rows": int(len(scope_completed)),
+                "scope_total_rows": int(len(scope_group)),
+                "conservative_verdict": conservative_verdict,
+                "failure_reasons": "|".join(scope_failures),
+                "diagnostic_verdict": "research_watchlist"
+                if not diagnostic_failures
                 else "blocked_by_robustness_stress",
-                "failure_reasons": "|".join(failures),
+                "diagnostic_failure_reasons": "|".join(diagnostic_failures),
                 "robustness_labels": "|".join(labels),
                 "completed_rows": int(len(completed)),
                 "total_rows": int(len(group)),
@@ -385,6 +401,13 @@ def build_robustness_summaries(detail: pd.DataFrame) -> tuple[pd.DataFrame, pd.D
                 "worst_max_dd": _max(completed, "max_dd"),
                 "validation_mean_sharpe": _window_mean(completed, "validation"),
                 "blind_mean_sharpe": _window_mean(completed, "blind"),
+                "scope_mean_sharpe": _mean(scope_completed, "sharpe"),
+                "scope_median_sharpe": _median(scope_completed, "sharpe"),
+                "scope_worst_sharpe": _min(scope_completed, "sharpe"),
+                "scope_mean_max_dd": _mean(scope_completed, "max_dd"),
+                "scope_worst_max_dd": _max(scope_completed, "max_dd"),
+                "scope_validation_mean_sharpe": _window_mean(scope_completed, "validation"),
+                "scope_blind_mean_sharpe": _window_mean(scope_completed, "blind"),
                 "worst_asset": _worst_asset(completed),
             }
         )
@@ -402,9 +425,9 @@ def render_watchlist_robustness_report(
     variant_ranking: pd.DataFrame,
 ) -> str:
     lines = [
-        "# Selector v0.8.2 Watchlist Robustness Gauntlet",
+        "# Watchlist Robustness Gauntlet",
         "",
-        "This is a research-only robustness stress report for selector v0.8.2 watchlist variants.",
+        "This is a research-only robustness stress report for watchlist candidate variants.",
         "It is not factor admission, portfolio construction, runtime publishing, or live execution approval.",
         "",
         "## Run",
@@ -416,18 +439,20 @@ def render_watchlist_robustness_report(
         "",
         "## Variant Ranking",
         "",
-        "| Variant | Verdict | Survival | Mean Sharpe | Median Sharpe | Worst Sharpe | Mean Max DD | Worst Max DD | "
+        "| Candidate | Variant | Verdict | Survival | Mean Sharpe | Median Sharpe | Worst Sharpe | Mean Max DD | Worst Max DD | "
         "Validation Mean Sharpe | Blind Mean Sharpe | Labels |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     if variant_ranking.empty:
-        lines.append("| none | none | 0/0 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | none |")
+        lines.append(
+            "| none | none | none | 0/0 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | none |"
+        )
     else:
         for row in variant_ranking.to_dict(orient="records"):
             survival = f"{int(row['stress_survival_count'])}/{int(row['stress_count'])}"
             labels = row.get("robustness_labels", "") or "none"
             lines.append(
-                "| `{variant_id}` | `{conservative_verdict}` | {survival} | {mean_sharpe:.4f} | "
+                "| `{candidate_id}` | `{variant_id}` | `{conservative_verdict}` | {survival} | {mean_sharpe:.4f} | "
                 "{median_sharpe:.4f} | {worst_sharpe:.4f} | {mean_max_dd:.4f} | {worst_max_dd:.4f} | "
                 "{validation_mean_sharpe:.4f} | {blind_mean_sharpe:.4f} | `{labels}` |".format(
                     survival=survival,
@@ -440,18 +465,18 @@ def render_watchlist_robustness_report(
             "",
             "## Scenario Stress Summary",
             "",
-            "| Scenario | Family | Variant | Verdict | Mean Sharpe | Worst Sharpe | Mean Max DD | "
+            "| Scenario | Family | Candidate | Variant | Verdict | Mean Sharpe | Worst Sharpe | Mean Max DD | "
             "Worst Max DD | Labels |",
-            "|---|---|---|---|---:|---:|---:|---:|---|",
+            "|---|---|---|---|---|---:|---:|---:|---:|---|",
         ]
     )
     if scenario_summary.empty:
-        lines.append("| none | none | none | none | 0.0000 | 0.0000 | 0.0000 | 0.0000 | none |")
+        lines.append("| none | none | none | none | none | 0.0000 | 0.0000 | 0.0000 | 0.0000 | none |")
     else:
         for row in scenario_summary.to_dict(orient="records"):
             labels = row.get("robustness_labels", "") or "none"
             lines.append(
-                "| `{scenario_id}` | `{stress_family}` | `{variant_id}` | `{conservative_verdict}` | "
+                "| `{scenario_id}` | `{stress_family}` | `{candidate_id}` | `{variant_id}` | `{conservative_verdict}` | "
                 "{mean_sharpe:.4f} | {worst_sharpe:.4f} | {mean_max_dd:.4f} | {worst_max_dd:.4f} | "
                 "`{labels}` |".format(labels=labels, **row)
             )
@@ -466,6 +491,7 @@ def render_watchlist_robustness_report(
             "- No selector evidence61 run.",
             "- No automatic QuantumRandy runtime publishing.",
             "- Stress verdicts are conservative research labels, not production approvals.",
+            "- Declared-scope assets are hard-gated; out-of-scope rows remain diagnostic labels.",
             "",
         ]
     )
@@ -534,36 +560,106 @@ def _build_variant_ranking(scenario_summary: pd.DataFrame) -> pd.DataFrame:
         ["candidate_id", "formula", "variant_id"], dropna=False
     ):
         labels = _join_unique(group["robustness_labels"])
-        failures = _join_unique(group["failure_reasons"])
-        survival_count = int((group["conservative_verdict"] == "research_watchlist").sum())
-        stress_count = int(len(group))
+        hard_group = _hard_gate_scenarios(group)
+        metric_group = hard_group if not hard_group.empty else group
+        failures = _join_unique(hard_group["failure_reasons"]) if not hard_group.empty else ""
+        diagnostic_failures = (
+            _join_unique(group["diagnostic_failure_reasons"]) if "diagnostic_failure_reasons" in group else ""
+        )
+        survival_count = int((hard_group["conservative_verdict"] == "research_watchlist").sum())
+        stress_count = int(len(hard_group))
         rows.append(
             {
                 "candidate_id": candidate_id,
                 "formula": formula,
                 "variant_id": variant_id,
                 "mitigation_family": _first(group, "mitigation_family"),
+                "intended_scope": _first(group, "intended_scope"),
+                "scope_asset": _first(group, "scope_asset"),
                 "conservative_verdict": "research_watchlist"
-                if survival_count == stress_count
+                if stress_count > 0 and survival_count == stress_count
                 else "blocked_pending_new_hypotheses",
                 "failure_reasons": failures,
+                "diagnostic_failure_reasons": diagnostic_failures,
                 "robustness_labels": labels,
                 "stress_survival_count": survival_count,
                 "stress_count": stress_count,
+                "diagnostic_scenario_count": int(len(group) - len(hard_group)),
                 "stress_survival_score": _ratio(survival_count, stress_count),
-                "mean_sharpe": _mean(group, "mean_sharpe"),
-                "median_sharpe": _median(group, "median_sharpe"),
-                "worst_sharpe": _min(group, "worst_sharpe"),
-                "mean_max_dd": _mean(group, "mean_max_dd"),
-                "worst_max_dd": _max(group, "worst_max_dd"),
-                "validation_mean_sharpe": _mean_nonzero(group, "validation_mean_sharpe"),
-                "blind_mean_sharpe": _mean_nonzero(group, "blind_mean_sharpe"),
+                "mean_sharpe": _mean(metric_group, "scope_mean_sharpe"),
+                "median_sharpe": _median(metric_group, "scope_median_sharpe"),
+                "worst_sharpe": _min(metric_group, "scope_worst_sharpe"),
+                "mean_max_dd": _mean(metric_group, "scope_mean_max_dd"),
+                "worst_max_dd": _max(metric_group, "scope_worst_max_dd"),
+                "validation_mean_sharpe": _mean_nonzero(metric_group, "scope_validation_mean_sharpe"),
+                "blind_mean_sharpe": _mean_nonzero(metric_group, "scope_blind_mean_sharpe"),
             }
         )
     return pd.DataFrame(rows).sort_values(
         ["stress_survival_score", "mean_sharpe", "worst_max_dd"],
         ascending=[False, False, True],
     )
+
+
+def _hard_gate_scenarios(group: pd.DataFrame) -> pd.DataFrame:
+    if "scope_hard_gate" not in group:
+        return group
+    return group[group["scope_hard_gate"].map(_truthy)].copy()
+
+
+def _scope_hard_gate(group: pd.DataFrame, scope_asset: str) -> tuple[pd.DataFrame, pd.DataFrame, bool]:
+    if not scope_asset:
+        completed = group[group["status"] == "completed"].copy()
+        return group, completed, True
+
+    mask = _scope_asset_mask(group, scope_asset)
+    if not bool(mask.any()):
+        return group.iloc[0:0].copy(), group.iloc[0:0].copy(), False
+
+    scope_group = group[mask].copy()
+    scope_completed = scope_group[scope_group["status"] == "completed"].copy()
+    return scope_group, scope_completed, True
+
+
+def _scope_asset_mask(frame: pd.DataFrame, scope_asset: str) -> pd.Series:
+    if not scope_asset or "asset" not in frame:
+        return pd.Series([True] * len(frame), index=frame.index)
+    assets = frame["asset"].map(_normalise_asset_value)
+    return assets.eq(scope_asset) | assets.str.startswith(scope_asset)
+
+
+def _declared_scope_asset(raw: Any) -> str:
+    cleaned = _clean(raw)
+    if cleaned is None:
+        return ""
+    text = str(cleaned).strip().upper()
+    for separator in ["/", ":", "-", "."]:
+        text = text.replace(separator, "_")
+    parts = [part for part in text.split("_") if part]
+    for part in parts:
+        token = _normalise_asset_value(part)
+        if _looks_like_asset_label(token):
+            return token
+    if len(parts) >= 2:
+        token = _normalise_asset_value(parts[0] + parts[1])
+        if _looks_like_asset_label(token):
+            return token
+    return ""
+
+
+def _normalise_asset_value(raw: Any) -> str:
+    return "".join(char for char in str(raw).strip().upper() if char.isalnum())
+
+
+def _looks_like_asset_label(token: str) -> bool:
+    quote_assets = ("USDT", "USDC", "BUSD", "USD", "BTC", "ETH")
+    return any(token.endswith(quote) and len(token) > len(quote) for quote in quote_assets)
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y"}
 
 
 def _conservative_failures(completed: pd.DataFrame, group: pd.DataFrame) -> list[str]:
