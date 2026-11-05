@@ -1,22 +1,37 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "randyslab-strict4h"
 version = "0.1.0"
 description = "RandysLab STRICT4H baseline research toolkit for cryptocurrency perpetual futures."
 readme = "README.md"
 requires-python = ">=3.10"
+# Core judge dependencies only. QuantumRandy depends on this package for the shared accounting core,
+# so optional tooling lives in extras below.
 dependencies = [
-  "pandas>=2.2",
-  "numpy>=1.26",
-  "PyYAML>=6.0",
-  "optuna>=3.6",
-  "ccxt>=4.4",
+  "numpy>=1.26,<3",
+  "pandas>=2.2,<4",
+  "PyYAML>=6.0,<7",
 ]
 
 [project.optional-dependencies]
+# Optuna 5.0 changed TPE defaults (multivariate + constant liar); stay below 5 until results are re-baselined.
+tuning = ["optuna>=3.6,<5"]
+fetch = [
+  "ccxt>=4.4,<5",
+  "requests>=2.31,<3",
+]
+
+[dependency-groups]
 dev = [
-  "pytest>=8.0",
+  "pytest>=8.0,<10",
   "ruff>=0.8",
 ]
+
+[tool.setuptools]
+packages = ["randyslab"]
 
 [tool.ruff]
 line-length = 120
