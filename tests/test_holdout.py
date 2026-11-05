@@ -8,7 +8,7 @@ import pytest
 
 from randyslab import trial_ledger
 from randyslab.data import load_market
-from randyslab.holdout import HOLDOUT_START, HoldoutSealedError, open_holdout, seal
+from randyslab.holdout import HOLDOUT_END, HOLDOUT_START, HoldoutSealedError, open_holdout, seal
 from randyslab.regimes import outside_regimes, regime_labels
 
 
@@ -67,6 +67,16 @@ def test_holdout_opens_once_per_preregistration_and_is_recorded(tmp_path: Path):
     opens = [row for row in trial_ledger.load(ledger) if row["source"] == "holdout_open"]
     assert [row["repeat_access"] for row in opens] == [False, True]
     assert all(row["holdout_access"] for row in opens)
+
+
+def test_opening_stops_at_the_end_of_the_holdout_window(tmp_path: Path):
+    trial_ledger.configure(tmp_path / "trials.jsonl")
+    index = pd.date_range(HOLDOUT_START - pd.Timedelta(days=1), HOLDOUT_END + pd.Timedelta(days=5), freq="1D")
+    frame = pd.DataFrame({"x": range(len(index))}, index=index)
+    opened = open_holdout(frame, _prereg(tmp_path, "prereg.json", ["a"]))
+    assert opened.index.min() < HOLDOUT_START
+    assert opened.index.max() == HOLDOUT_END - pd.Timedelta(days=1)
+    assert ((opened.index >= HOLDOUT_START) & (opened.index < HOLDOUT_END)).sum() == 56
 
 
 def test_regime_labels():

@@ -5,6 +5,10 @@ Everything before ``HOLDOUT_START`` has been used for selection, tuning or obser
 pre-registration opens the holdout. A pre-registration lists every candidate before anyone looks, and the holdout can be
 opened with only one of them: a second, different pre-registration is refused. Each opening is written to the trial
 ledger.
+
+The holdout is the window [``HOLDOUT_START``, ``HOLDOUT_END``): the 56 daily bars of the 2026-11-05 archive refresh.
+Bars from ``HOLDOUT_END`` on are forward data, evaluated only by observations registered before them, so opening the
+holdout never returns them.
 """
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ import pandas as pd
 from . import trial_ledger
 
 HOLDOUT_START = pd.Timestamp("2026-09-06T00:00:00Z")
+HOLDOUT_END = pd.Timestamp("2026-11-01T00:00:00Z")
 
 
 class HoldoutSealedError(RuntimeError):
@@ -49,7 +54,8 @@ def open_holdout(
     *,
     ledger_path: str | Path | None = None,
 ) -> pd.DataFrame:
-    """Return ``frame`` including holdout bars, once per pre-registration, and record the access.
+    """Return ``frame`` through the holdout window (bars before ``HOLDOUT_END``), once per pre-registration, and record
+    the access.
 
     ``ledger_path`` defaults to the active trial ledger; opening is refused when no ledger is active, because an
     unrecorded opening could not be checked later.
@@ -73,8 +79,8 @@ def open_holdout(
     trial_ledger.record(
         source="holdout_open",
         candidate={"preregistration": prereg["path"], "candidates": prereg["candidates"]},
-        window={"start": HOLDOUT_START.isoformat()},
+        window={"start": HOLDOUT_START.isoformat(), "end": HOLDOUT_END.isoformat()},
         holdout_access=True,
         extra={"extra_preregistration_sha256": prereg["sha256"], "repeat_access": bool(previous)},
     )
-    return frame
+    return frame[frame.index < HOLDOUT_END]
