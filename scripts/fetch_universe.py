@@ -28,7 +28,6 @@ DATASETS = {
     "funding": f"{UM}/fundingRate/{{symbol}}/",
     "premium_1d": f"{UM}/premiumIndexKlines/{{symbol}}/1d/",
 }
-EXCLUDED_BASES = {"USDC", "BUSD", "TUSD", "FDUSD", "DAI", "USDP", "USDE", "PYUSD", "EUR", "GBP", "AEUR"}
 
 
 def main() -> None:
@@ -72,11 +71,7 @@ def main() -> None:
 
 def usdt_perpetuals() -> list[str]:
     names = [prefix.rstrip("/").rsplit("/", 1)[-1] for prefix in archive.list_prefixes(f"{UM}/klines/")]
-    return sorted(
-        name
-        for name in names
-        if name.endswith("USDT") and "_" not in name and name[: -len("USDT")] not in EXCLUDED_BASES
-    )
+    return sorted(name for name in names if archive.is_usdt_perpetual(name))
 
 
 def fetch_symbol(symbol: str, out: Path, last_month: str) -> dict:
@@ -127,21 +122,8 @@ def _entry_from_files(symbol: str, out: Path) -> dict:
 
 def _normalize(dataset: str, raw: pd.DataFrame) -> pd.DataFrame:
     if dataset == "funding":
-        frame = pd.DataFrame(
-            {
-                "timestamp": archive.to_utc(raw["calc_time"]).dt.floor("min"),
-                "funding_rate": pd.to_numeric(raw["last_funding_rate"], errors="coerce"),
-                "funding_interval_hours": pd.to_numeric(raw.get("funding_interval_hours"), errors="coerce"),
-            }
-        )
-        return frame.dropna(subset=["funding_rate"])
-    frame = pd.DataFrame({"timestamp": archive.to_utc(raw["open_time"])})
-    keep = ["open", "high", "low", "close"]
-    if dataset == "klines_1d":
-        keep += ["volume", "quote_volume", "count", "taker_buy_volume", "taker_buy_quote_volume"]
-    for column in keep:
-        frame[column] = pd.to_numeric(raw[column], errors="coerce")
-    return frame.dropna(subset=["close"])
+        return archive.normalize_funding(raw)
+    return archive.normalize_klines(raw, volumes=dataset == "klines_1d")
 
 
 def _empty(dataset: str) -> pd.DataFrame:

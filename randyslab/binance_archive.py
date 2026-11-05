@@ -32,6 +32,8 @@ KLINE_COLUMNS = [
     "ignore",
 ]
 FUNDING_COLUMNS = ["calc_time", "funding_interval_hours", "last_funding_rate"]
+# Stablecoin and fiat bases: their perpetuals carry no cross-sectional information.
+EXCLUDED_BASES = frozenset({"USDC", "BUSD", "TUSD", "FDUSD", "DAI", "USDP", "USDE", "PYUSD", "EUR", "GBP", "AEUR"})
 
 _local = threading.local()
 
@@ -52,9 +54,9 @@ def list_prefixes(prefix: str) -> list[str]:
     return _list(prefix, "Prefix")
 
 
-def list_keys(prefix: str) -> list[str]:
-    """Object keys under ``prefix`` (paginated S3 listing)."""
-    return _list(prefix, "Key")
+def list_keys(prefix: str, after: str = "") -> list[str]:
+    """Object keys under ``prefix`` (paginated S3 listing), only those sorting after ``after`` when given."""
+    return _list(prefix, "Key", marker=after)
 
 
 def download_verified(path: str, retries: int = 4, timeout: float = 30.0) -> bytes | None:
@@ -85,6 +87,34 @@ def read_zip_csv(payload: bytes, columns: list[str]) -> pd.DataFrame:
     return frame
 
 
+def is_usdt_perpetual(name: str) -> bool:
+    """USDT-margined perpetual (no delivery date suffix) on a non-stablecoin base."""
+    return name.endswith("USDT") and "_" not in name and name[: -len("USDT")] not in EXCLUDED_BASES
+
+
+def normalize_klines(raw: pd.DataFrame, *, volumes: bool = True) -> pd.DataFrame:
+    """Archive klines to ``timestamp`` (open time, UTC), OHLC and, with ``volumes``, volume and taker-buy columns."""
+    frame = pd.DataFrame({"timestamp": to_utc(raw["open_time"])})
+    keep = ["open", "high", "low", "close"]
+    if volumes:
+        keep += ["volume", "quote_volume", "count", "taker_buy_volume", "taker_buy_quote_volume"]
+    for column in keep:
+        frame[column] = pd.to_numeric(raw[column], errors="coerce")
+    return frame.dropna(subset=["close"])
+
+
+def normalize_funding(raw: pd.DataFrame) -> pd.DataFrame:
+    """Archive funding settlements to minute-floored ``timestamp``, ``funding_rate`` and ``funding_interval_hours``."""
+    frame = pd.DataFrame(
+        {
+            "timestamp": to_utc(raw["calc_time"]).dt.floor("min"),
+            "funding_rate": pd.to_numeric(raw["last_funding_rate"], errors="coerce"),
+            "funding_interval_hours": pd.to_numeric(raw.get("funding_interval_hours"), errors="coerce"),
+        }
+    )
+    return frame.dropna(subset=["funding_rate"])
+
+
 def to_utc(values: pd.Series) -> pd.Series:
     """Millisecond epochs to UTC timestamps; microsecond epochs are detected and converted too."""
     numeric = pd.to_numeric(values, errors="coerce")
@@ -92,9 +122,8 @@ def to_utc(values: pd.Series) -> pd.Series:
     return pd.to_datetime(numeric, unit=unit, utc=True)
 
 
-def _list(prefix: str, tag: str, retries: int = 6) -> list[str]:
+def _list(prefix: str, tag: str, retries: int = 6, marker: str = "") -> list[str]:
     items: list[str] = []
-    marker = ""
     while True:
         params = {"delimiter": "/", "prefix": prefix}
         if marker:
