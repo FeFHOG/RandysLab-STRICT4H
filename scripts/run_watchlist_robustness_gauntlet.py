@@ -9,6 +9,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from randyslab import trial_ledger
 from randyslab.factor_candidate_robustness import (
     build_default_watchlist_stress_scenarios,
     parse_variant_specs,
@@ -27,6 +28,7 @@ DEFAULT_VARIANTS = [
 
 
 def main() -> None:
+    trial_ledger.configure_default(Path(__file__).resolve().parents[1], context={"entry_point": Path(__file__).stem})
     parser = argparse.ArgumentParser(
         description="Run research-only robustness stresses for selected selector v0.8.2 watchlist variants."
     )

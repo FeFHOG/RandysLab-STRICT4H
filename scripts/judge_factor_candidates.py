@@ -7,10 +7,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from randyslab import trial_ledger
 from randyslab.formula_candidates import run_factor_candidate_judging
 
 
 def main() -> None:
+    trial_ledger.configure_default(Path(__file__).resolve().parents[1], context={"entry_point": Path(__file__).stem})
     parser = argparse.ArgumentParser(
         description="Strictly judge QuantumRandy research-only factor candidate exports."
     )

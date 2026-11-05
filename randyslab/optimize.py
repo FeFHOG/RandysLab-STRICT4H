@@ -5,6 +5,7 @@ import warnings
 
 import pandas as pd
 
+from . import trial_ledger
 from .config import CostProfile
 from .engine import run_strict4h
 from .metrics import cagr, summarize
@@ -36,8 +37,16 @@ def random_search(ohlcv, funding, costs: CostProfile, n_trials: int, seed: int) 
     for trial in range(n_trials):
         theta = sample_theta(rng)
         ledger = run_strict4h(ohlcv, funding, theta, costs)
-        rows.append({"trial": trial, "score": cagr(ledger["r_net"]), "theta": theta, **summarize(ledger)})
+        row = {"trial": trial, "score": cagr(ledger["r_net"]), "theta": theta, **summarize(ledger)}
+        _record_trial("rl_stage1_random", ohlcv, row)
+        rows.append(row)
     return pd.DataFrame(rows).sort_values("score", ascending=False)
+
+
+def _record_trial(source: str, ohlcv: pd.DataFrame, row: dict) -> None:
+    window = {"start": str(ohlcv.index[0]), "end": str(ohlcv.index[-1])} if len(ohlcv) else {}
+    metrics = {key: row[key] for key in ("score", "sharpe", "max_dd", "monthly_geom", "trades") if key in row}
+    trial_ledger.record(source=source, candidate=row["theta"], window=window, metrics=metrics)
 
 
 def _theta_from_trial(trial) -> dict:
@@ -70,7 +79,9 @@ def tpe_search(ohlcv, funding, costs: CostProfile, n_trials: int, seed: int) -> 
         theta = _theta_from_trial(trial)
         ledger = run_strict4h(ohlcv, funding, theta, costs)
         score = cagr(ledger["r_net"])
-        rows.append({"trial": trial.number, "score": score, "theta": theta, **summarize(ledger)})
+        row = {"trial": trial.number, "score": score, "theta": theta, **summarize(ledger)}
+        _record_trial("rl_stage1_tpe", ohlcv, row)
+        rows.append(row)
         return score
 
     sampler = optuna.samplers.TPESampler(seed=seed)

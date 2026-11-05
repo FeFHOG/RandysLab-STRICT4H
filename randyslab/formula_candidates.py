@@ -10,6 +10,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from . import trial_ledger
 from .accounting import CostRates, infer_bar_hours, legacy_funding_settled
 from .config import load_settings
 from .data import load_market, slice_window
@@ -186,7 +187,35 @@ def run_factor_candidate_judging(
     return payload
 
 
-def judge_factor_candidate(
+def judge_factor_candidate(candidate: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+    """Judge one candidate variant (see ``_judge_factor_candidate``) and record the verdict in the trial ledger."""
+    result = _judge_factor_candidate(candidate, **kwargs)
+    ohlcv = kwargs["ohlcv"]
+    variant = {
+        key: kwargs.get(key)
+        for key in (
+            "signal_threshold",
+            "signal_mode",
+            "max_exposure_abs",
+            "volatility_cap_formula",
+            "volatility_cap_max",
+            "drawdown_stop_max",
+            "drawdown_stop_cooldown_bars",
+        )
+    }
+    metrics = result.get("metrics") or {}
+    trial_ledger.record(
+        source="rl_judge",
+        candidate={"formula": result["formula"], "candidate_id": result["candidate_id"], **variant},
+        window={"start": str(ohlcv.index[0]), "end": str(ohlcv.index[-1])} if len(ohlcv) else {},
+        metrics={key: metrics.get(key) for key in ("sharpe", "max_dd", "cagr", "final_equity", "trades")},
+        passed=result["status"] == "completed" and not result["failure_reasons"],
+        extra={"failure_reasons": result["failure_reasons"]},
+    )
+    return result
+
+
+def _judge_factor_candidate(
     candidate: dict[str, Any],
     *,
     ohlcv: pd.DataFrame,
