@@ -150,6 +150,73 @@ def build_ledger(
     )
 
 
+def build_portfolio_ledger(
+    weights: pd.DataFrame,
+    close: pd.DataFrame,
+    funding_settled: pd.DataFrame | None,
+    costs: Any,
+    *,
+    slippage_bps: float | pd.Series | pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Bar-level ledger of a multi-asset book; each asset follows ``build_ledger`` semantics.
+
+    ``weights`` (bars x assets) is the fraction of equity held in each asset during each bar; callers shift decisions
+    so a weight was set at an earlier close. Costs are charged on ``|w[t] - w[t-1]|`` per asset (entry from flat on
+    the first bar), funding on the position held at each settlement. Holding a weight on a bar without a price raises:
+    a delisted asset must be closed by its last priced bar. ``slippage_bps`` may vary by asset (Series) or by asset
+    and bar (DataFrame); it defaults to the cost profile's slippage.
+    """
+    rates = CostRates.from_costs(costs)
+    close = close.astype(float)
+    w = weights.reindex(index=close.index, columns=close.columns).fillna(0.0).astype(float)
+    priced = close.notna()
+    stranded = (w != 0.0) & ~priced
+    if stranded.to_numpy().any():
+        first = stranded.stack()
+        first = first[first].index[0]
+        raise ValueError(f"weight held without a price: {first[1]} at {first[0]}")
+    returns = close.pct_change(fill_method=None).where(priced).fillna(0.0)
+
+    delta = w.diff()
+    if len(delta):
+        delta.iloc[0] = w.iloc[0]
+    turnover = delta.abs()
+    if slippage_bps is None:
+        slip = rates.slippage_bps
+    elif isinstance(slippage_bps, pd.DataFrame):
+        slip = slippage_bps.reindex(index=w.index, columns=w.columns).fillna(rates.slippage_bps)
+    elif isinstance(slippage_bps, pd.Series):
+        slip = slippage_bps.reindex(w.columns).fillna(rates.slippage_bps)
+    else:
+        slip = float(slippage_bps)
+    c_fee = turnover * rates.fee_bps / 10_000.0
+    if isinstance(slip, pd.Series):
+        c_slip = turnover.mul(slip, axis="columns") / 10_000.0
+    else:
+        c_slip = turnover * slip / 10_000.0
+    if funding_settled is None:
+        settled = pd.DataFrame(0.0, index=w.index, columns=w.columns)
+    else:
+        settled = funding_settled.reindex(index=w.index, columns=w.columns).fillna(0.0).astype(float)
+    c_fund = w * settled * rates.funding_multiplier
+
+    ledger = pd.DataFrame(
+        {
+            "r_gross": (w * returns).sum(axis=1),
+            "c_fee": c_fee.sum(axis=1),
+            "c_slip": c_slip.sum(axis=1),
+            "c_fund": c_fund.sum(axis=1),
+            "turnover": turnover.sum(axis=1),
+            "gross_exposure": w.abs().sum(axis=1),
+            "net_exposure": w.sum(axis=1),
+            "positions": (w != 0.0).sum(axis=1),
+        },
+        index=close.index,
+    )
+    ledger["r_net"] = ledger["r_gross"] - ledger["c_fee"] - ledger["c_slip"] - ledger["c_fund"]
+    return ledger
+
+
 def infer_bar_hours(index: pd.Index, default: float = 4.0) -> float:
     """Median bar spacing in hours, or ``default`` when it cannot be inferred."""
     if not isinstance(index, pd.DatetimeIndex) or len(index) < 2:
