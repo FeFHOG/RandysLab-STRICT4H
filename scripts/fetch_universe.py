@@ -48,6 +48,10 @@ def main() -> None:
     manifest_path = out / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {"symbols": {}}
     todo = [s for s in symbols if not all((out / d / f"{s}.csv").exists() for d in DATASETS)]
+    for symbol in sorted(set(symbols) - set(todo)):
+        entry = manifest["symbols"].get(symbol)
+        if not entry or "error" in entry:  # finished by an interrupted run before its manifest entry was saved
+            manifest["symbols"][symbol] = _entry_from_files(symbol, out)
     done = 0
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = {pool.submit(fetch_symbol, symbol, out, args.last_month): symbol for symbol in todo}
@@ -91,10 +95,28 @@ def fetch_symbol(symbol: str, out: Path, last_month: str) -> dict:
             frames.append(_normalize(dataset, archive.read_zip_csv(payload, columns)))
         frame = pd.concat(frames).sort_values("timestamp").drop_duplicates("timestamp") if frames else _empty(dataset)
         path = out / dataset / f"{symbol}.csv"
-        frame.to_csv(path, index=False)
+        partial = path.with_suffix(".csv.partial")
+        frame.to_csv(partial, index=False)
+        partial.replace(path)  # atomic: an interrupted run never leaves a truncated CSV behind
         entry[dataset] = {
             "months": len(keys),
             "missing_months": missing,
+            "rows": int(len(frame)),
+            "first": str(frame["timestamp"].iloc[0]) if len(frame) else None,
+            "last": str(frame["timestamp"].iloc[-1]) if len(frame) else None,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+    return entry
+
+
+def _entry_from_files(symbol: str, out: Path) -> dict:
+    entry: dict = {"rebuilt_from_files": True}
+    for dataset in DATASETS:
+        path = out / dataset / f"{symbol}.csv"
+        frame = pd.read_csv(path, usecols=["timestamp"])
+        entry[dataset] = {
+            "months": None,
+            "missing_months": None,
             "rows": int(len(frame)),
             "first": str(frame["timestamp"].iloc[0]) if len(frame) else None,
             "last": str(frame["timestamp"].iloc[-1]) if len(frame) else None,

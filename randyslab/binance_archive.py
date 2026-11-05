@@ -92,16 +92,14 @@ def to_utc(values: pd.Series) -> pd.Series:
     return pd.to_datetime(numeric, unit=unit, utc=True)
 
 
-def _list(prefix: str, tag: str) -> list[str]:
+def _list(prefix: str, tag: str, retries: int = 6) -> list[str]:
     items: list[str] = []
     marker = ""
     while True:
         params = {"delimiter": "/", "prefix": prefix}
         if marker:
             params["marker"] = marker
-        response = session().get(LIST_URL, params=params, timeout=60)
-        response.raise_for_status()
-        text = response.text
+        text = _list_page(params, retries)
         found = re.findall(rf"<{tag}>([^<]*)</{tag}>", text)
         items.extend(item for item in found if item != prefix)
         if "<IsTruncated>true</IsTruncated>" not in text:
@@ -110,6 +108,22 @@ def _list(prefix: str, tag: str) -> list[str]:
         marker = next_marker.group(1) if next_marker else (found[-1] if found else "")
         if not marker:
             return items
+
+
+def _list_page(params: dict[str, str], retries: int) -> str:
+    """One listing page, retried with backoff: S3 answers bursts with 503 "Slow Down" or dropped connections."""
+    for attempt in range(retries):
+        try:
+            response = session().get(LIST_URL, params=params, timeout=60)
+        except requests.RequestException:
+            time.sleep(2.0 * 2**attempt)
+            continue
+        if response.status_code == 200:
+            return response.text
+        if response.status_code not in (429, 500, 502, 503, 504):
+            response.raise_for_status()
+        time.sleep(2.0 * 2**attempt)
+    raise ArchiveError(f"listing {params.get('prefix')} failed after {retries} attempts")
 
 
 def _get(url: str, retries: int, timeout: float) -> bytes | None:
