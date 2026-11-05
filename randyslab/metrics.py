@@ -38,10 +38,19 @@ def sharpe(returns: pd.Series, risk_free_rate: float = 0.03, bars_per_year: floa
     return value if np.isfinite(value) else 0.0
 
 
-def monthly_geometric_mean(returns: pd.Series) -> float:
+def monthly_geometric_mean(returns: pd.Series, bar_hours: float = 4.0, min_coverage: float = 0.9) -> float:
+    """Geometric mean monthly return over calendar months with at least ``min_coverage`` of their bars.
+
+    Partial first/last months would otherwise count as full months.
+    """
     if returns.empty:
         return 0.0
-    monthly = (1.0 + returns).resample("ME").prod() - 1.0
+    grouped = (1.0 + returns).resample("ME")
+    monthly = grouped.prod() - 1.0
+    expected = monthly.index.days_in_month * 24.0 / float(bar_hours)
+    full = grouped.count().to_numpy() >= min_coverage * expected.to_numpy()
+    if full.any():
+        monthly = monthly[full]
     monthly = monthly.dropna().clip(lower=-0.999999)
     if monthly.empty:
         return 0.0
@@ -62,5 +71,7 @@ def summarize(ledger: pd.DataFrame, risk_free_rate: float = 0.03) -> dict:
         "fee_total": float(ledger["c_fee"].sum()),
         "slippage_total": float(ledger["c_slip"].sum()),
         "funding_total": float(ledger["c_fund"].sum()),
+        # Arithmetic sum of bar returns; use final_equity for the compounded outcome.
         "net_total": float(r.sum()),
+        "final_equity": float(equity_curve(r).iloc[-1]) if len(r) else 1.0,
     }

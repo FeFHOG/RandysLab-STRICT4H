@@ -8,7 +8,7 @@ from typing import Any
 import pandas as pd
 
 from .config import load_settings
-from .data import align_funding_to_ohlcv, read_funding, read_ohlcv, slice_window
+from .data import load_market, slice_window
 from .formula_candidates import (
     judge_factor_candidate,
     load_factor_candidate_jsonl,
@@ -138,8 +138,7 @@ def run_factor_drawdown_diagnostics(
         asset_label = _asset_label(asset)
         ohlcv_path = _resolve_path(base_dir, asset.get("ohlcv_csv") or settings.paths.ohlcv_csv)
         funding_path = _resolve_path(base_dir, asset.get("funding_csv") or settings.paths.funding_csv)
-        full_ohlcv = read_ohlcv(ohlcv_path)
-        full_funding = align_funding_to_ohlcv(full_ohlcv, read_funding(funding_path))
+        full_ohlcv, full_funding = load_market(ohlcv_path, funding_path, settings.bar_hours)
 
         for window in windows:
             bounds = _window_bounds(settings, window)

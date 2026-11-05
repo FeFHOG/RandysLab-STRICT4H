@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -9,7 +10,7 @@ from typing import Any
 import pandas as pd
 
 from .config import load_settings
-from .data import align_funding_to_ohlcv, read_funding, read_ohlcv, slice_window
+from .data import load_market, slice_window
 from .engine import run_strict4h
 from .metrics import equity_curve, summarize
 
@@ -34,8 +35,9 @@ def run_baseline_export(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     settings = load_settings(config_path)
-    ohlcv = read_ohlcv(_resolve_path(base_dir, settings.paths.ohlcv_csv))
-    funding = align_funding_to_ohlcv(ohlcv, read_funding(_resolve_path(base_dir, settings.paths.funding_csv)))
+    ohlcv_path = _resolve_path(base_dir, settings.paths.ohlcv_csv)
+    funding_path = _resolve_path(base_dir, settings.paths.funding_csv)
+    ohlcv, funding = load_market(ohlcv_path, funding_path, settings.bar_hours)
     window_bounds = _window_bounds(settings, window)
     if window != "all":
         ohlcv = slice_window(ohlcv, window_bounds["start"], window_bounds["end"])
@@ -94,6 +96,15 @@ def run_baseline_export(
         "bar_hours": settings.bar_hours,
         "window": {"name": window, **window_bounds},
         "costs": asdict(settings.costs),
+        "data": {
+            "ohlcv_csv": _display_path(ohlcv_path, base_dir),
+            "ohlcv_sha256": _sha256(ohlcv_path),
+            "funding_csv": _display_path(funding_path, base_dir),
+            "funding_sha256": _sha256(funding_path),
+            "first_bar": ohlcv.index[0].isoformat() if len(ohlcv) else None,
+            "last_bar": ohlcv.index[-1].isoformat() if len(ohlcv) else None,
+            "bars": int(len(ohlcv)),
+        },
         "strategies": strategy_exports,
         "artifacts": {
             "summary_csv": summary_csv.name,
@@ -156,6 +167,10 @@ def _display_path(path: Path, base_dir: Path) -> str:
         return path.resolve().relative_to(base_dir.resolve()).as_posix()
     except ValueError:
         return path.as_posix()
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 def _strategy_id(strategy_path: Path, theta: dict[str, Any]) -> str:

@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from .config import load_settings
-from .data import align_funding_to_ohlcv, read_funding, read_ohlcv
+from .data import load_market
 from .formula_candidates import evaluate_candidate_factor, evaluate_formula, load_factor_candidate_jsonl
 
 
@@ -31,8 +31,7 @@ def run_factor_candidate_correlation_review(
     ohlcv_path = _resolve_path(base_dir, ohlcv_csv or settings.paths.ohlcv_csv)
     funding_path = _resolve_path(base_dir, funding_csv or settings.paths.funding_csv)
     candidates = load_factor_candidate_jsonl(candidate_path)
-    ohlcv = read_ohlcv(ohlcv_path)
-    funding = align_funding_to_ohlcv(ohlcv, read_funding(funding_path))
+    ohlcv, funding = load_market(ohlcv_path, funding_path, settings.bar_hours)
 
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)

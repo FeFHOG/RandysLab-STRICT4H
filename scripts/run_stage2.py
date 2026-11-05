@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from randyslab.config import load_settings
-from randyslab.data import align_funding_to_ohlcv, read_funding, read_ohlcv, slice_window
+from randyslab.data import load_market, slice_window
 from randyslab.screening import robust_summary, select_stable
 
 
@@ -20,8 +20,7 @@ def main() -> None:
     args = ap.parse_args()
 
     s = load_settings(args.config)
-    ohlcv_all = read_ohlcv(s.paths.ohlcv_csv)
-    funding_all = align_funding_to_ohlcv(ohlcv_all, read_funding(s.paths.funding_csv))
+    ohlcv_all, funding_all = load_market(s.paths.ohlcv_csv, s.paths.funding_csv, s.bar_hours)
     ohlcv = slice_window(ohlcv_all, s.windows.training_start, s.windows.training_end)
     funding = funding_all.reindex(ohlcv.index)
     candidates = json.loads(Path(args.candidates).read_text(encoding="utf-8"))

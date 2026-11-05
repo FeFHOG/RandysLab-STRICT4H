@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from randyslab.config import CostProfile, load_settings
-from randyslab.data import align_funding_to_ohlcv, read_funding, read_ohlcv, slice_window
+from randyslab.data import load_market, slice_window
 from randyslab.engine import run_strict4h
 from randyslab.metrics import summarize
 
@@ -22,8 +22,7 @@ def main() -> None:
     args = ap.parse_args()
 
     settings = load_settings(args.config)
-    ohlcv = read_ohlcv(settings.paths.ohlcv_csv)
-    funding = align_funding_to_ohlcv(ohlcv, read_funding(settings.paths.funding_csv))
+    ohlcv, funding = load_market(settings.paths.ohlcv_csv, settings.paths.funding_csv, settings.bar_hours)
 
     if args.window != "all":
         start = getattr(settings.windows, f"{args.window}_start")

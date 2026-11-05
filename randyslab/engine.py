@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
+from .accounting import build_ledger, infer_bar_hours, legacy_funding_settled
 from .config import CostProfile
 from .signals import DEFAULT_THETA, make_signal
 
@@ -34,43 +34,37 @@ def run_strict4h_signal(
     costs: CostProfile,
     execution_delay_bars: int = 1,
 ) -> pd.DataFrame:
+    """Strict next-bar ledger for a {-1, 0, 1} signal; position size is ``signal * max_exposure_abs``.
+
+    Funding is charged from ``ohlcv["funding_settled"]`` (see ``randyslab.data.load_market``). Frames without that
+    column fall back to the legacy pro-rata approximation.
+    """
     p = DEFAULT_THETA | theta
     signal = signal.reindex(ohlcv.index).fillna(0).astype("int8")
-    exposure = signal.shift(execution_delay_bars).fillna(0.0).astype(float)
-    cap = float(p.get("max_exposure_abs", 1.0) or 1.0)
-    exposure = exposure.clip(lower=-abs(cap), upper=abs(cap))
+    size = abs(float(p.get("max_exposure_abs", 1.0) or 1.0))
+    exposure = signal.shift(execution_delay_bars).fillna(0.0).astype(float) * size
 
-    close = ohlcv["close"].astype(float)
-    r_mkt = close.pct_change().fillna(0.0)
-    r_raw = exposure * r_mkt
+    funding = funding_rate.reindex(ohlcv.index).fillna(0.0)
+    if "funding_settled" in ohlcv.columns:
+        settled = ohlcv["funding_settled"]
+    else:
+        settled = legacy_funding_settled(funding, infer_bar_hours(ohlcv.index))
+    ledger = build_ledger(ohlcv["close"], exposure, settled, costs)
 
-    delta = exposure.diff().fillna(0.0)
-    turnover = delta.abs()
-    fee_bps = costs.taker_bps * costs.fee_multiplier
-    slip_bps = costs.slippage_bps * costs.slippage_multiplier
-    c_fee = turnover * fee_bps / 10_000.0
-    c_slip = turnover * slip_bps / 10_000.0
-
-    # Funding rates are 8h observations; STRICT4H accrues half per 4h bar.
-    c_fund = exposure * funding_rate.reindex(ohlcv.index).fillna(0.0) * 0.5 * costs.funding_multiplier
-    r_net = r_raw - c_fee - c_slip - c_fund
-
-    return pd.DataFrame(
-        {
-            "open": ohlcv["open"],
-            "high": ohlcv["high"],
-            "low": ohlcv["low"],
-            "close": close,
-            "funding_rate": funding_rate.reindex(ohlcv.index).fillna(0.0),
-            "signal": signal,
-            "exposure": exposure,
-            "delta_exposure": delta,
-            "r_mkt": r_mkt,
-            "r_raw": r_raw,
-            "c_fee": c_fee,
-            "c_slip": c_slip,
-            "c_fund": c_fund,
-            "r_net": r_net.replace([np.inf, -np.inf], 0.0).fillna(0.0),
-        },
-        index=ohlcv.index,
+    return pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "open": ohlcv["open"],
+                    "high": ohlcv["high"],
+                    "low": ohlcv["low"],
+                    "close": ohlcv["close"].astype(float),
+                    "funding_rate": funding,
+                    "signal": signal,
+                },
+                index=ohlcv.index,
+            ),
+            ledger,
+        ],
+        axis=1,
     )

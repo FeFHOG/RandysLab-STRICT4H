@@ -10,8 +10,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from .accounting import CostRates, infer_bar_hours, legacy_funding_settled
 from .config import load_settings
-from .data import align_funding_to_ohlcv, read_funding, read_ohlcv, slice_window
+from .data import load_market, slice_window
 from .engine import run_strict4h_signal
 from .metrics import equity_curve, summarize
 
@@ -70,8 +71,7 @@ def run_factor_candidate_judging(
     settings = load_settings(config_path)
     ohlcv_path = _resolve_path(base_dir, ohlcv_csv or settings.paths.ohlcv_csv)
     funding_path = _resolve_path(base_dir, funding_csv or settings.paths.funding_csv)
-    ohlcv = read_ohlcv(ohlcv_path)
-    funding = align_funding_to_ohlcv(ohlcv, read_funding(funding_path))
+    ohlcv, funding = load_market(ohlcv_path, funding_path, settings.bar_hours)
     window_bounds = _window_bounds(settings, window)
     if window != "all":
         ohlcv = slice_window(ohlcv, window_bounds["start"], window_bounds["end"])
@@ -591,11 +591,12 @@ def _apply_drawdown_stop(
 
     adjusted = signal.reindex(ohlcv.index).fillna(0).astype("int8").copy()
     close = ohlcv["close"].astype(float)
-    funding_rate = funding.reindex(ohlcv.index).fillna(0.0).astype(float)
-    cap = abs(float(max_exposure_abs or 1.0))
-    fee_bps = float(getattr(costs, "taker_bps", 0.0)) * float(getattr(costs, "fee_multiplier", 1.0))
-    slip_bps = float(getattr(costs, "slippage_bps", 0.0)) * float(getattr(costs, "slippage_multiplier", 1.0))
-    funding_multiplier = float(getattr(costs, "funding_multiplier", 1.0))
+    if "funding_settled" in ohlcv.columns:
+        settled = ohlcv["funding_settled"].astype(float)
+    else:
+        settled = legacy_funding_settled(funding.reindex(ohlcv.index), infer_bar_hours(ohlcv.index))
+    size = abs(float(max_exposure_abs or 1.0))
+    rates = CostRates.from_costs(costs)
     stop_max = float(drawdown_stop_max)
     cooldown_bars = max(int(drawdown_stop_cooldown_bars or 0), 0)
 
@@ -604,13 +605,13 @@ def _apply_drawdown_stop(
     previous_exposure = 0.0
     cooldown_remaining = 0
 
-    for idx, timestamp in enumerate(ohlcv.index):
+    for idx in range(len(ohlcv.index)):
         if cooldown_remaining > 0:
             adjusted.iat[idx] = 0
             cooldown_remaining -= 1
 
-        exposure = float(adjusted.iat[idx - 1]) if idx > 0 else 0.0
-        exposure = min(max(exposure, -cap), cap)
+        # Same semantics as accounting.build_ledger, replayed bar by bar so the stop can react.
+        exposure = float(adjusted.iat[idx - 1]) * size if idx > 0 else 0.0
         if idx == 0:
             market_return = 0.0
         else:
@@ -618,9 +619,9 @@ def _apply_drawdown_stop(
             market_return = 0.0 if previous_close == 0.0 else float(close.iat[idx] / previous_close - 1.0)
 
         turnover = abs(exposure - previous_exposure)
-        fee = turnover * fee_bps / 10_000.0
-        slippage = turnover * slip_bps / 10_000.0
-        funding_cost = exposure * float(funding_rate.loc[timestamp]) * 0.5 * funding_multiplier
+        fee = turnover * rates.fee_bps / 10_000.0
+        slippage = turnover * rates.slippage_bps / 10_000.0
+        funding_cost = exposure * float(settled.iat[idx]) * rates.funding_multiplier
         net_return = exposure * market_return - fee - slippage - funding_cost
         equity *= 1.0 + net_return
         peak = max(peak, equity)
