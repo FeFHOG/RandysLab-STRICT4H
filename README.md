@@ -34,10 +34,14 @@ QuantumRandy remains responsible for LLM/MCTS factor mining, formula validation,
 ## Installation
 
 ```powershell
-python -m venv .venv
+# uv reads pyproject.toml, uv.lock and .python-version (Python 3.13)
+uv sync --all-extras
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+# Without uv: python -m venv .venv; pip install -r requirements.txt   (pinned export of uv.lock, all extras)
 ```
+
+The core package needs only numpy, pandas and PyYAML. Optuna (`tuning` extra) and ccxt/requests (`fetch` extra) are
+optional, which keeps the accounting core light for QuantumRandy, which depends on it.
 
 ## Data Format
 
