@@ -2,9 +2,23 @@ from __future__ import annotations
 
 import pandas as pd
 
-from .config import CostProfile, Screening
+from .config import CostProfile, Screening, Windows
 from .engine import run_strict4h
-from .metrics import max_drawdown, monthly_geometric_mean, summarize
+from .metrics import max_drawdown, monthly_geometric_mean
+
+STAGE2_WINDOWS = ("train_val", "training")
+
+
+def stage2_window(windows: Windows, window: str = "train_val") -> tuple[str, str]:
+    """Stage II screens Stage I survivors on Training+Validation, as in the AutoQuant paper.
+
+    ``training`` reproduces the 2026-06-30 regression in which Stage II only re-scored Stage I's own window.
+    """
+    if window == "train_val":
+        return windows.training_start, windows.validation_end
+    if window == "training":
+        return windows.training_start, windows.training_end
+    raise ValueError(f"window must be one of {STAGE2_WINDOWS}")
 
 
 def scenario_grid(base: CostProfile, screening: Screening) -> list[CostProfile]:

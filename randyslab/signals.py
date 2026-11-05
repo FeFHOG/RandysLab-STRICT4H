@@ -60,14 +60,18 @@ def randyslab_signal(ohlcv: pd.DataFrame, funding_rate: pd.Series, p: dict) -> p
     w_mom = float(p["w_mom"])
     composite = (w_mom * momentum + (1.0 - w_mom) * anomaly).fillna(0.5)
 
+    # Funding bias, measured in basis points as the parameter names say: entering the side that pays funding
+    # needs a stronger signal. The paper's equation applies kappa per 1.0 decimal of funding, which with its
+    # 0-0.005 range never moves a threshold (see docs/AUTOQUANT_IMPLEMENTATION_NOTES.md).
     base_thr = float(p["ema_threshold"])
-    bias_thr = float(p["funding_bias_thr_bps"]) / 10_000.0
-    k = float(p["funding_bias_k_thr_per_bps"])
-    adverse = (funding_rate.abs() - bias_thr).clip(lower=0.0)
-    dynamic_thr = base_thr + k * adverse
+    bias_thr_bps = float(p["funding_bias_thr_bps"])
+    k_per_bps = float(p["funding_bias_k_thr_per_bps"])
+    funding_bps = funding_rate.reindex(ohlcv.index).fillna(0.0).astype(float) * 10_000.0
+    long_adverse_bps = (funding_bps - bias_thr_bps).clip(lower=0.0)
+    short_adverse_bps = (-funding_bps - bias_thr_bps).clip(lower=0.0)
 
-    long_cut = 0.5 + dynamic_thr
-    short_cut = 0.5 - dynamic_thr
+    long_cut = 0.5 + base_thr + k_per_bps * long_adverse_bps
+    short_cut = 0.5 - base_thr - k_per_bps * short_adverse_bps
     raw = pd.Series(0, index=ohlcv.index, dtype="int8")
     raw[composite >= long_cut] = 1
     raw[composite <= short_cut] = -1
@@ -96,9 +100,10 @@ def bollinger_breakout_signal(ohlcv: pd.DataFrame, p: dict) -> pd.Series:
     std = close.rolling(period, min_periods=period).std(ddof=0)
     upper = mid + dev * std
     lower = mid - dev * std
-    raw = pd.Series(0, index=ohlcv.index, dtype="int8")
-    raw[close > upper] = 1
-    raw[close < lower] = -1
+    # Hold the last breakout direction until the opposite band breaks (stop-and-reverse).
+    raw = pd.Series(np.nan, index=ohlcv.index)
+    raw[close > upper] = 1.0
+    raw[close < lower] = -1.0
     return raw.ffill().fillna(0).astype("int8")
 
 

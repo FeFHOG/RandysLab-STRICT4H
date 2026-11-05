@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from randyslab.config import load_settings
 from randyslab.data import load_market, slice_window
-from randyslab.screening import robust_summary, select_stable
+from randyslab.screening import STAGE2_WINDOWS, robust_summary, select_stable, stage2_window
 
 
 def main() -> None:
@@ -17,11 +17,13 @@ def main() -> None:
     ap.add_argument("--config", default="configs/strict4h.yaml")
     ap.add_argument("--candidates", default="reports/stage1/top_candidates.json")
     ap.add_argument("--out", default="reports/stage2")
+    ap.add_argument("--window", choices=STAGE2_WINDOWS, default="train_val")
     args = ap.parse_args()
 
     s = load_settings(args.config)
     ohlcv_all, funding_all = load_market(s.paths.ohlcv_csv, s.paths.funding_csv, s.bar_hours)
-    ohlcv = slice_window(ohlcv_all, s.windows.training_start, s.windows.training_end)
+    start, end = stage2_window(s.windows, args.window)
+    ohlcv = slice_window(ohlcv_all, start, end)
     funding = funding_all.reindex(ohlcv.index)
     candidates = json.loads(Path(args.candidates).read_text(encoding="utf-8"))
 
@@ -31,11 +33,25 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     summary.assign(theta=summary["theta"].map(json.dumps)).to_csv(out / "robust_summary.csv", index=False)
     stable.assign(theta=stable["theta"].map(json.dumps)).to_csv(out / "stable_candidates.csv", index=False)
-    selected = stable.iloc[0]["theta"] if len(stable) else {}
-    (out / "selected_theta.json").write_text(json.dumps(selected, indent=2), encoding="utf-8")
+
+    # Never write an empty selection: downstream code would silently run default parameters.
+    selected_path = out / "selected_theta.json"
+    if len(stable):
+        selected_path.write_text(json.dumps(stable.iloc[0]["theta"], indent=2), encoding="utf-8")
+    elif selected_path.exists():
+        selected_path.unlink()
+    manifest = {
+        "status": "selected" if len(stable) else "no_stable_candidates",
+        "window": args.window,
+        "start": start,
+        "end": end,
+        "bars": int(len(ohlcv)),
+        "candidates": len(candidates),
+        "stable": int(len(stable)),
+    }
+    (out / "stage2_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(stable.drop(columns=["theta"]).to_string(index=False) if len(stable) else "No stable candidates passed.")
 
 
 if __name__ == "__main__":
     main()
-

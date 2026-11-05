@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import warnings
 
 import pandas as pd
 
@@ -79,11 +80,17 @@ def tpe_search(ohlcv, funding, costs: CostProfile, n_trials: int, seed: int) -> 
 
 
 def search(ohlcv, funding, costs: CostProfile, n_trials: int, seed: int, method: str = "tpe") -> pd.DataFrame:
+    """Run Stage I search; the ``optimizer`` column records which method actually produced the trials."""
     if method == "random":
-        return random_search(ohlcv, funding, costs, n_trials, seed)
+        return random_search(ohlcv, funding, costs, n_trials, seed).assign(optimizer="random")
     try:
-        return tpe_search(ohlcv, funding, costs, n_trials, seed)
+        return tpe_search(ohlcv, funding, costs, n_trials, seed).assign(optimizer="tpe")
     except ModuleNotFoundError as exc:
         if exc.name != "optuna":
             raise
-        return random_search(ohlcv, funding, costs, n_trials, seed)
+        warnings.warn(
+            "optuna is not installed; Stage I fell back to random search (install the 'tuning' extra)",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return random_search(ohlcv, funding, costs, n_trials, seed).assign(optimizer="random_fallback_optuna_missing")
