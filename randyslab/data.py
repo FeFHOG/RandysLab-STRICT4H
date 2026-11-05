@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from .accounting import funding_feature, funding_settled_per_bar, normalize_funding_events
+from .holdout import open_holdout, seal
 
 REQUIRED_OHLCV = {"timestamp", "open", "high", "low", "close", "volume"}
 
@@ -38,12 +39,16 @@ def load_market(
     ohlcv_path: str | Path,
     funding_path: str | Path,
     bar_hours: float = 4.0,
+    *,
+    preregistration: str | Path | None = None,
 ) -> tuple[pd.DataFrame, pd.Series]:
     """OHLCV with a per-bar ``funding_settled`` cost column, plus the funding feature series.
 
     The engine charges funding from ``funding_settled`` (exact settlements), while signals only see the feature.
+    Bars in the sealed holdout are dropped unless ``preregistration`` opens it (see ``randyslab.holdout``).
     """
     ohlcv = read_ohlcv(ohlcv_path)
+    ohlcv = seal(ohlcv) if preregistration is None else open_holdout(ohlcv, preregistration)
     events = normalize_funding_events(read_funding(funding_path))
     ohlcv["funding_settled"] = funding_settled_per_bar(ohlcv.index, events, bar_hours)
     return ohlcv, funding_feature(ohlcv.index, events)
