@@ -72,7 +72,7 @@ def main() -> None:
                 _flush(out, rows, failed, spans, manifest)
                 _write_manifest(manifest_path, manifest)
                 print(f"  {done}/{len(futures)} days", flush=True)
-    _flush(out, rows, failed, spans, manifest, also=[s for s in spans if s not in manifest["symbols"]])
+    _flush(out, rows, failed, spans, manifest, also=list(spans))  # every entry records this run's span
     _write_manifest(manifest_path, manifest)
     entries = manifest["symbols"].values()
     print(f"done: {sum(e.get('days', 0) for e in entries)} days stored, "
